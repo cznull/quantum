@@ -1,6 +1,6 @@
 #pragma once
 
-#define T_d
+//#define T_d
 
 #ifdef T_d
 typedef double current;

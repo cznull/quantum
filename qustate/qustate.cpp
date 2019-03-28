@@ -30,8 +30,8 @@
 #define MAX_LOADSTRING 100
 #define PI 3.14159265358979324
 
-const int size = 1024;
-const int spat = 8192;
+const int size = 4096;
+const int spat = 32768;
  
 struct eigent {
 	current value;
@@ -58,14 +58,13 @@ double2 potex[spat];
 double2 potek[spat];
 double2 ws[spat];
 float3 pline[(spat - 1) * 2];
-current2 hm[size*size];
+current2 *hm;
+current2 *eigenvec;
 current eigenval[size];
-current2 eigenvec[size*size];
-std::vector<eigent> eigen(size);
-float3 lines[(size - 1) * 2 * size];
+//float3 lines[(size - 1) * 2 * size];
 int ct[4096];
-float ldos[size*size];
-int img[size*size];
+//float ldos[size*size];
+//int img[size*size];
 
 
 double el = size / (r - l) / 23;
@@ -86,6 +85,20 @@ float mat[16] = {
 	0,0,0,1,
 };
 
+int fileindex(void) {
+	FILE *fi;
+	int index = 0;
+	if (!fopen_s(&fi, "D:/files/courses/qu/img/index.txt", "rb")) {
+		fscanf(fi, "%d", &index);
+		fclose(fi);
+	}
+	if (!fopen_s(&fi, "D:/files/courses/qu/img/index.txt", "wb")) {
+		fprintf(fi, "%d", index + 1);
+		fclose(fi);
+	}
+	return index;
+}
+
 cv::Mat frame(size, size, CV_8UC3, cv::Scalar(0, 0, 0));
 
 char sf[1024] =
@@ -93,7 +106,7 @@ char sf[1024] =
 "float l = 0.25;\r\n"
 "a = x / l - floor(x / l);\r\n"
 "float i = ((7.0 / 16.0 < a) && (a < 9.0 / 16.0))?1.0:0.0;\r\n"
-"return (i - 0.0625)*(x*x<1.0?1.0:2.0) * 1000.0+50;"
+"return i*(x*x<1.0?1.0:2.0) * 1000.0;"
 ;
 
 const char *comsha[3] = {
@@ -182,7 +195,7 @@ int gimg(void) {
 	if (xl > 64) {
 		xl = 64;
 	}
-	cuimg(ldos, size, 1.0 / (r - l), el, xl, es, eb, br);
+	cuimg(NULL, size, 1.0 / (r - l), el, xl, es, eb, br);
 	/*for (i = 0; i < size*size; i++) {
 		j = log(ldos[i] * br / el + 1.0) * 2048 + 1024;
 		if (j > 4095) {
@@ -258,10 +271,6 @@ int calc(float k0) {
 	glBindTexture(GL_TEXTURE_1D, v1);
 	glGetTexImage(GL_TEXTURE_1D, 0, GL_RED, GL_FLOAT, v);
 	caleigen(k0);
-	for (i = 0; i < size; i++) {
-		eigen[i].value = eigenval[i];
-		eigen[i].vec = eigenvec + i * size;
-	}
 	//std::sort(eigen.begin(), eigen.end(), cp);
 	gline();
 	gimg();
@@ -508,6 +517,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		ceny = 0.0;
 		cenz = 0.0;
 
+		hm = (current2*)malloc(size*size * sizeof(current2));
+		eigenvec = (current2*)malloc(size*size * sizeof(current2));
+
 		glGenBuffers(2, vbo);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
 		glBufferData(GL_ARRAY_BUFFER, (size - 1) * 2 * size * sizeof(float3), NULL, GL_STATIC_DRAW);
@@ -689,7 +701,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			glBindTexture(GL_TEXTURE_2D, imgtex);
 			glGetTexImage(GL_TEXTURE_2D, 0, GL_BGR, GL_UNSIGNED_BYTE, frame.data);
 			flip(frame, frame, 0);
-			cv::imwrite("D:/files/courses/qu/img/0.png", frame);
+			int index = fileindex();
+			char info[1024];
+			sprintf_s(info, "D:/files/courses/qu/img/%d.png", index);
+			cv::imwrite(info, frame);
+			sprintf_s(info, "D:/files/courses/qu/img/%d.csv", index);
+			FILE *fi;
+			if (!fopen_s(&fi, info, "wb")) {
+				fprintf(fi, "Ek,");
+				for (i = 0; i < size; i++) {
+					fprintf(fi, "%f,", l+(i+0.5)*(r-l)/size);
+				}
+				fprintf(fi, "\n");
+				for (i = 0; i < size; i++) {
+					fprintf(fi, "%f,", eigenval[i]);
+					for (j = 0; j < size; j++) {
+						fprintf(fi, "%f,", norm(eigenvec[i*size + j]));
+					}
+					fprintf(fi, "\n");
+				}
+				fclose(fi);
+			}
 			break;
 		}
 		case 'H': {
@@ -738,16 +770,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				memcpy(Ek + ss * i, eigenval, ss * sizeof(current));
 			}
 			FILE *fi;
-			if (!fopen_s(&fi, "D:/files/courses/qu/img/0.txt", "wb")) {
+			int index = fileindex();
+			char info[1024];
+			sprintf_s(info, "D:/files/courses/qu/img/%d.csv", index);
+			if (!fopen_s(&fi, info, "wb")) {
 				/*fprintf(fi, "Ek\t");
 				for (i = 0; i < ss; i++) {
 					fprintf(fi, "n:%d\t", i + 1);
 				}
 				fprintf(fi, "\n");*/
 				for (i = 0; i < ss; i++) {
-					fprintf(fi, "%f\t", PI * 2.0 / (r - l) * (i - ss / 2) / ss);
+					fprintf(fi, "%f,", PI * 2.0 / (r - l) * (i - ss / 2) / ss);
 					for (j = 0; j < ss; j++) {
-						fprintf(fi, "%f\t", Ek[i*ss + j]);
+						fprintf(fi, "%f,", Ek[i*ss + j]);
 					}
 					fprintf(fi, "\n");
 				}
@@ -846,7 +881,12 @@ INT_PTR CALLBACK videokernal(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 				goto next;
 			}
 
-			cv::VideoWriter writer("D:/files/courses/qu/img/0.mp4", cv::VideoWriter::fourcc('H', '2', '6', '4'), 60.0, cv::Size(size, size));
+			int index = fileindex();
+			sprintf_s(info, "D:/files/courses/qu/img/%d.mp4", index);
+			
+			//cv::VideoWriter writer(info, cv::VideoWriter::fourcc('H', '2', '6', '4'), 60.0, cv::Size(size, size));
+			cv::VideoWriter writer(info, cv::VideoWriter::fourcc('H', '2', '6', '4'), 60.0, cv::Size(1024, 1024)); 
+			cv::Mat frame1(1024, 1024, CV_8UC3, cv::Scalar(0, 0, 0));
 			for (int i = 0; i <= n; i++) {
 				sprintf_s(sf, "float t=%f;\r\n%s", i*((tr - tl) / n) + tl, s);
 				glShaderSource(shader, 3, comsha, NULL);
@@ -871,8 +911,10 @@ INT_PTR CALLBACK videokernal(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 				draw();
 				glBindTexture(GL_TEXTURE_2D, imgtex);
 				glGetTexImage(GL_TEXTURE_2D, 0, GL_BGR, GL_UNSIGNED_BYTE, frame.data);
-				flip(frame, frame, 0);
-				writer << frame;
+				for (int j = 0; j < 1024; j++) {
+					memcpy(frame1.data + 1024 * 3 * j, frame.data + size * 3 * (1023 - j) + 3 * (size - 1024) / 2, 1024 * 3);
+				}
+				writer << frame1;
 			}
 			writer.release();
 		}
